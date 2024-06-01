@@ -1,7 +1,7 @@
 ## LMAOBox-Navbot
 **Pathfinding and Navigation Bot for LMAOBox Lua**
 
-https://cdn.discordapp.com/attachments/1200832181547847750/1210581139346030703/306752016-fdfc25e6-766d-4088-ab1a-21d99a5c2d8b.png?ex=665c758b&is=665b240b&hm=98309ad6691c7ab57c3e0c708e9d949cb00e63b17ef1705f7ae04fd7c20f941f&
+![LMAOBox Navbot](https://cdn.discordapp.com/attachments/1200832181547847750/1210581139346030703/306752016-fdfc25e6-766d-4088-ab1a-21d99a5c2d8b.png?ex=665c758b&is=665b240b&hm=98309ad6691c7ab57c3e0c708e9d949cb00e63b17ef1705f7ae04fd7c20f941f&)
 
 ### Status
 *Currently: Not Functional. Awaiting LMAOBox Lua update for debugging.*
@@ -10,7 +10,7 @@ https://cdn.discordapp.com/attachments/1200832181547847750/1210581139346030703/3
 - **!!! IMPORTANT !!!** You **MUST** have **LnxLib** installed for this to work! 
 - **[Download LnxLib from GitHub](https://github.com/lnx00/Lmaobox-Library/releases/latest)**
   
-  ![LnxLib Required](https://dummyimage.com/600x200/ff0000/ffffff&text=YOU+MUST+HAVE+LNXLIB+INSTALLED!)
+  ![LnxLib Required](https://dummyimage.com/600x200/ff0000/ffffff&text=**YOU+MUST+HAVE+LNXLIB+INSTALLED!**)
 
 ### Usage Instructions
 
