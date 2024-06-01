@@ -5,7 +5,8 @@ Pathfinding and navigation bot made with LMAOBox Lua.
 
 Support: https://dsc.gg/rosnehook
 
-Credits for original code: Inx00
+Credits for original code: Inx00 
+and titaniummachine1 for update
 
 # How to use LMAOBox-Navbot
 
