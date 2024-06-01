@@ -14,6 +14,13 @@
 
 2. **Prepare Nav Meshes**
    - If you don't have nav meshes, download `MakeNavs.bat` from the source code and run it.
+   - **Finding Game Maps Directory**:
+     - Navigate to your TF2 installation directory. This is usually found at `C:\Program Files (x86)\Steam\steamapps\common\Team Fortress 2\tf\maps`.
+   - **Using MakeNavs.bat**:
+     - Open the command prompt and navigate to the directory where you downloaded `MakeNavs.bat`.
+     - Execute `MakeNavs.bat`.
+     - When prompted, paste the path to your TF2 maps directory (`C:\Program Files (x86)\Steam\steamapps\common\Team Fortress 2\tf\maps`).
+     - Alternatively, you can drag and drop all generated nav meshes into the `maps` folder.
 
 3. **Start TF2 and Inject LMAOBox**
    - Launch TF2.
@@ -45,6 +52,13 @@
 
 5. **Generate Nav Meshes**
    - Run `MakeNavs.bat` to create nav meshes for all casual maps.
+   - **Finding Game Maps Directory**:
+     - Navigate to your TF2 installation directory. This is usually found at `C:\Program Files (x86)\Steam\steamapps\common\Team Fortress 2\tf\maps`.
+   - **Using MakeNavs.bat**:
+     - Open the command prompt and navigate to the directory where you downloaded `MakeNavs.bat`.
+     - Execute `MakeNavs.bat`.
+     - When prompted, paste the path to your TF2 maps directory (`C:\Program Files (x86)\Steam\steamapps\common\Team Fortress 2\tf\maps`).
+     - Alternatively, you can drag and drop all generated nav meshes into the `maps` folder.
 
 6. **Start TF2 and Inject LMAOBox**
    - Launch TF2.
