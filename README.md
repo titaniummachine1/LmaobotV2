@@ -3,6 +3,8 @@
 # LMAOBox-Navbot
 Pathfinding and navigation bot made with LMAOBox Lua.
 
+currently: Not Functional, Waiting for lbox lua update to ensure its functionality by debugging
+
 Support: https://dsc.gg/rosnehook
 
 Credits for original code: Inx00 
