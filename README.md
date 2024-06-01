@@ -1,6 +1,8 @@
 ## LMAOBox-Navbot
 **Pathfinding and Navigation Bot for LMAOBox Lua**
 
+https://cdn.discordapp.com/attachments/1200832181547847750/1210581139346030703/306752016-fdfc25e6-766d-4088-ab1a-21d99a5c2d8b.png?ex=665c758b&is=665b240b&hm=98309ad6691c7ab57c3e0c708e9d949cb00e63b17ef1705f7ae04fd7c20f941f&
+
 ### Status
 *Currently: Not Functional. Awaiting LMAOBox Lua update for debugging.*
 
