@@ -1,44 +1,64 @@
-## This script **REQUIRES** [lnxLib](https://github.com/lnx00/Lmaobox-Library/releases/latest/). It will NOT work without this lua.
+## LMAOBox-Navbot
+**Pathfinding and Navigation Bot for LMAOBox Lua**
 
-# LMAOBox-Navbot
-Pathfinding and navigation bot made with LMAOBox Lua.
+### Status
+*Currently: Not Functional. Awaiting LMAOBox Lua update for debugging.*
 
-currently: Not Functional, Waiting for lbox lua update to ensure its functionality by debugging
+### Requirements
+- **LnxLib**: [Download from GitHub](https://github.com/lnx00/Lmaobox-Library/releases/latest)
 
-Support: https://dsc.gg/rosnehook
+### Usage Instructions
 
-Credits for original code: Inx00 
+1. **Download Lmaobot.lua**
+   - Go to releases and download the `Lmaobot.lua` script to your `%localappdata%` folder.
 
-and titaniummachine1 for update
+2. **Prepare Nav Meshes**
+   - If you don't have nav meshes, download `MakeNavs.bat` from the source code and run it.
 
-# How to use LMAOBox-Navbot
+3. **Start TF2 and Inject LMAOBox**
+   - Launch TF2.
+   - Inject LMAOBox.
+   - Join a CTF, PL, or PLR map (currently supports these game modes).
 
-First, go to releases and download the Lmaobot.lua script to your ``%localappdata%`` folder.
+4. **Load Lmaobot.lua**
+   - Go to the Lua tab in the LMAOBox menu.
+   - Load `Lmaobot.lua`.
 
-If you don't have nav meshes (if you don't know what I'm talking about, you don't have them,) you need to download MakeNavs.bat from the source code and run it.
+5. **Enjoy NavBot on LMAOBox!**
 
-Start TF2, inject LMAOBox, and go into a CTF, PL, or PLR map (currently only supporting these)
+### For Developers: How to Compile/Bundle
 
-Go to the Lua tab in the menu and load "Lmaobot.lua"
+1. **Install Node.js**
+   - Download and install the stable version of [Node.js](https://nodejs.org/).
 
-Enjoy NavBot on LMAOBox!
+2. **Download Source Code**
+   - Go to releases and download the source code (zip).
+   - Unzip it to any desired location.
 
-# How to compile/bundle (dev only)
-First, go to https://nodejs.org/ and download and install the stable version of Node.JS
+3. **Install LuaBundle**
+   - Open the **Node.js command prompt**.
+   - Execute: `npm install luabundle`.
 
-Next, go to releases and download the source code (zip) and unzip it to any place you want.
+4. **Run Batch Scripts**
+   - Run `Bundle.bat` and wait for it to finish.
+   - Run `BundleAndDeploy.bat`.
 
-After that, you open the **Node.JS command prompt** and execute
-```
-npm install luabundle
-```
+5. **Generate Nav Meshes**
+   - Run `MakeNavs.bat` to create nav meshes for all casual maps.
 
-Once it has installed, run Bundle.bat and after it finishes run BundleAndDeploy.bat
+6. **Start TF2 and Inject LMAOBox**
+   - Launch TF2.
+   - Inject LMAOBox (ensure it's not the beta build).
+   - Join a map.
 
-When those batch scripts have finished, run MakeNavs.bat to get nav meshes for all causal maps
+7. **Load Lmaobot.lua**
+   - Go to the Lua tab in the LMAOBox menu.
+   - Load `Lmaobot.lua`.
 
-Start TF2, inject LMAOBox (not beta build), and go into a map.
+8. **Enjoy NavBot on LMAOBox!**
 
-Go to the Lua tab in the menu and load "Lmaobot.lua"
+### Credits
+- **Original Code**: Inx00
+- **Update**: titaniummachine1
 
-Enjoy NavBot on LMAOBox!
+For support, visit: [Discord](https://dsc.gg/rosnehook)
