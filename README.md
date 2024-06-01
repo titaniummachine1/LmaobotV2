@@ -5,7 +5,10 @@
 *Currently: Not Functional. Awaiting LMAOBox Lua update for debugging.*
 
 ### Requirements
-- **LnxLib**: [Download from GitHub](https://github.com/lnx00/Lmaobox-Library/releases/latest)
+- **!!! IMPORTANT !!!** You **MUST** have **LnxLib** installed for this to work! 
+- **[Download LnxLib from GitHub](https://github.com/lnx00/Lmaobox-Library/releases/latest)**
+  
+  ![LnxLib Required](https://dummyimage.com/600x200/ff0000/ffffff&text=YOU+MUST+HAVE+LNXLIB+INSTALLED!)
 
 ### Usage Instructions
 
