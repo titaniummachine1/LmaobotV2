@@ -59,6 +59,37 @@ local function AStarPath(start, goal, nodes, adjacentFun)
     return nil -- Path not found if loop exits
 end
 
+-- Greedy Best-First Search algorithm
+local function GreedyBestFirstSearch(start, goal, nodes, getNeighbors)
+    local openSet = Heap.new(function(a, b) return a.heuristic < b.heuristic end)
+    local closedSet = {}
+
+    openSet:push({node = start, heuristic = Heuristic(start, goal), path = {start}})
+
+    while not openSet:empty() do
+        local currentData = openSet:pop()
+        local currentNode = currentData.node
+        local currentPath = currentData.path
+
+        if currentNode.id == goal.id then
+            return currentPath
+        end
+
+        closedSet[currentNode] = true
+
+        for _, neighbor in ipairs(getNeighbors(currentNode, nodes)) do
+            if not closedSet[neighbor] then
+                local newPath = {table.unpack(currentPath)}
+                newPath[#newPath + 1] = neighbor
+                openSet:push({node = neighbor, heuristic = Heuristic(neighbor, goal), path = newPath})
+            end
+        end
+    end
+
+    return nil -- Path not found if the open set is empty
+end
+
+AStar.QuickPath = GreedyBestFirstSearch
 AStar.Path = AStarPath
 
 return AStar
