@@ -11,9 +11,16 @@ local Lib, Log = Common.Lib, Common.Log
 
 -- Constants
 local STEP_HEIGHT = 18
-local MAX_SIMULATION_TICKS = 5
+local DROP_HEIGHT = 144  -- Define your constants outside the function
+local Jump_Height = 72 --duck jump height
+local MAX_SLOPE_ANGLE = 55 -- Maximum angle (in degrees) that is climbable
+local GRAVITY = 800 -- Gravity in units per second squared
+local MIN_STEP_SIZE = 5 -- Minimum step size in units
+local preferredSteps = 10 --prefered number oif steps for simulations
 local HULL_MIN = G.pLocal.vHitbox.Min
 local HULL_MAX = G.pLocal.vHitbox.Max
+local TRACE_MASK = MASK_PLAYERSOLID
+local TICK_RATE = 66
 
 -- Add a connection between two nodes
 function Navigation.AddConnection(nodeA, nodeB)
@@ -110,152 +117,102 @@ function Navigation.AddCostToConnection(nodeA, nodeB, cost)
 end
 
 -- Perform a trace hull down from the given position to the ground
----@param position table The start position of the trace
+---@param position Vector3 The start position of the trace
 ---@param hullSize table The size of the hull
----@return table The hit position and the normal of the ground at that point
+---@return Vector3 The normal of the ground at that point
 local function traceHullDown(position, hullSize)
-    local startPos = Vector3(position.x, position.y, position.z)
-    local endPos = Vector3(position.x, position.y, position.z - 90)  -- Adjust the distance as needed
-    local traceResult = engine.TraceHull(startPos, endPos, hullSize.min, hullSize.max, MASK_PLAYERSOLID_BRUSHONLY)
-
-    local hitPosition = { x = traceResult.endpos.x, y = traceResult.endpos.y, z = traceResult.endpos.z }
-    local groundNormal = traceResult.plane.normal
-
-    return hitPosition, groundNormal
+    local endPos = position - Vector3(0, 0, DROP_HEIGHT)  -- Adjust the distance as needed
+    local traceResult = engine.TraceHull(position, endPos, hullSize.min, hullSize.max, MASK_PLAYERSOLID_BRUSHONLY)
+    return traceResult.plane  -- Directly using the plane as the normal
 end
 
 -- Perform a trace line down from the given position to the ground
----@param position table The start position of the trace
----@param distance number The distance to trace down
----@return table The hit position
-local function traceLineDown(position, distance)
-    local startPos = Vector3(position.x, position.y, position.z)
-    local endPos = Vector3(position.x, position.y, position.z - distance)
-    local traceResult = engine.TraceLine(startPos, endPos, TRACE_MASK)
-    return { x = traceResult.endpos.x, y = traceResult.endpos.y, z = traceResult.endpos.z }
+---@param position Vector3 The start position of the trace
+---@return Vector3 The hit position
+local function traceLineDown(position)
+    local endPos = position - Vector3(0, 0, DROP_HEIGHT)
+    local traceResult = engine.TraceLine(position, endPos, TRACE_MASK)
+    return traceResult.endpos
 end
 
 -- Calculate the remaining two corners based on the adjusted corners and ground normal
----@param corner1 table The first adjusted corner
----@param corner2 table The second adjusted corner
----@param normal table The ground normal
+---@param corner1 Vector3 The first adjusted corner
+---@param corner2 Vector3 The second adjusted corner
+---@param normal Vector3 The ground normal
+---@param height number The height of the rectangle
 ---@return table The remaining two corners
-local function calculateRemainingCorners(corner1, corner2, normal)
-    local widthVector = { x = corner2.x - corner1.x, y = corner2.y - corner1.y, z = corner2.z - corner1.z }
-    local width = math.sqrt(widthVector.x^2 + widthVector.y^2)
+local function calculateRemainingCorners(corner1, corner2, normal, height)
+    local widthVector = corner2 - corner1
+    local widthLength = widthVector:Length2D()
 
-    local heightVector = { x = -widthVector.y, y = widthVector.x, z = 0 }
-    local height = width  -- Assuming square shape for simplicity, adjust if necessary
+    local heightVector = Vector3(-widthVector.y, widthVector.x, 0)
 
-    local function rotateAroundNormal(vector, normal, angle)
+    local function rotateAroundNormal(vector, angle)
         local cosTheta = math.cos(angle)
         local sinTheta = math.sin(angle)
-        return {
-            x = (cosTheta + (1 - cosTheta) * normal.x^2) * vector.x + ((1 - cosTheta) * normal.x * normal.y - normal.z * sinTheta) * vector.y + ((1 - cosTheta) * normal.x * normal.z + normal.y * sinTheta) * vector.z,
-            y = ((1 - cosTheta) * normal.x * normal.y + normal.z * sinTheta) * vector.x + (cosTheta + (1 - cosTheta) * normal.y^2) * vector.y + ((1 - cosTheta) * normal.y * normal.z - normal.x * sinTheta) * vector.z,
-            z = ((1 - cosTheta) * normal.x * normal.z - normal.y * sinTheta) * vector.x + ((1 - cosTheta) * normal.y * normal.z + normal.x * sinTheta) * vector.y + (cosTheta + (1 - cosTheta) * normal.z^2) * vector.z
-        }
+        return Vector3(
+            (cosTheta + (1 - cosTheta) * normal.x^2) * vector.x + ((1 - cosTheta) * normal.x * normal.y - normal.z * sinTheta) * vector.y + ((1 - cosTheta) * normal.x * normal.z + normal.y * sinTheta) * vector.z,
+            ((1 - cosTheta) * normal.x * normal.y + normal.z * sinTheta) * vector.x + (cosTheta + (1 - cosTheta) * normal.y^2) * vector.y + ((1 - cosTheta) * normal.y * normal.z - normal.x * sinTheta) * vector.z,
+            ((1 - cosTheta) * normal.x * normal.z - normal.y * sinTheta) * vector.x + ((1 - cosTheta) * normal.y * normal.z + normal.x * sinTheta) * vector.y + (cosTheta + (1 - cosTheta) * normal.z^2) * vector.z
+        )
     end
 
-    local rotatedHeightVector = rotateAroundNormal(heightVector, normal, math.pi / 2)
+    local rotatedHeightVector = rotateAroundNormal(heightVector, math.pi / 2)
 
-    local corner3 = {
-        x = corner1.x + rotatedHeightVector.x,
-        y = corner1.y + rotatedHeightVector.y,
-        z = corner1.z + rotatedHeightVector.z
-    }
-
-    local corner4 = {
-        x = corner2.x + rotatedHeightVector.x,
-        y = corner2.y + rotatedHeightVector.y,
-        z = corner2.z + rotatedHeightVector.z
-    }
+    local corner3 = corner1 + rotatedHeightVector * (height / widthLength)
+    local corner4 = corner2 + rotatedHeightVector * (height / widthLength)
 
     return { corner3, corner4 }
 end
 
 -- Fix a node by adjusting its height based on TraceLine results from the corners
 ---@param nodeId integer The index of the node in the Nodes table
----@return Node The fixed node
 function Navigation.FixNode(nodeId)
     local nodes = G.Navigation.nodes
     local node = nodes[nodeId]
     if not node or not node.pos then
         print("Node with ID " .. tostring(nodeId) .. " is invalid or missing position, exiting function")
-        return nil
+        return
     end
 
-    if node.fixed then
-        return node
-    end
+    -- Step 1: Raise the corners by a defined height
+    local raiseVector = Vector3(0, 0, Jump_Height)
+    local raisedNWPos = node.nw + raiseVector
+    local raisedSEPos = node.se + raiseVector
 
-    local upVector = Vector3(0, 0, 72)
-    local downVector = Vector3(0, 0, -144)
-    local nodePos = node.pos
-    local nwPos = node.nw + upVector
-    local sePos = node.se + upVector
-    local nePos = Vector3(node.nw.x, node.se.y, node.nw.z) + upVector
-    local swPos = Vector3(node.se.x, node.nw.y, node.se.z) + upVector
+    -- Step 2: Calculate the middle position after raising the corners
+    local middlePos = (raisedNWPos + raisedSEPos) / 2
 
-    local positions = { nwPos, nePos, swPos, sePos }
-    local lowestFraction = math.huge
-    local bestZ = nodePos.z
-    local validTraceFound = false
-
-    for _, pos in ipairs(positions) do
-        local traceResult = engine.TraceLine(pos, pos + downVector, TRACE_MASK)
-        if traceResult.fraction > 0 and traceResult.fraction < lowestFraction then
-            lowestFraction = traceResult.fraction
-            bestZ = traceResult.endpos.z
-            validTraceFound = true
-        end
-    end
-
-    if validTraceFound then
-        node.pos.z = bestZ
-    else
-        node.pos.z = nodePos.z + STEP_HEIGHT
-    end
-
-    -- Calculate the middle position after fixing corners
-    local middle = {
-        x = (nwPos.x + sePos.x) / 2,
-        y = (nwPos.y + sePos.y) / 2,
-        z = (nwPos.z + sePos.z) / 2
-    }
-
-    -- Perform trace hull down from the middle position to get the ground normal
+    -- Step 3: Perform trace hull down from the middle position to get the ground normal
     local traceHullSize = {
-        min = { x = -math.abs(nwPos.x - sePos.x) / 2, y = -math.abs(nwPos.y - sePos.y) / 2, z = 0 },
-        max = { x = math.abs(nwPos.x - sePos.x) / 2, y = math.abs(nwPos.y - sePos.y) / 2, z = 45 }
+        -- Clamp the size to player hitbox size to avoid staircase issues
+        min = Vector3(math.max(-math.abs(raisedNWPos.x - raisedSEPos.x) / 2, HULL_MIN.x), math.max(-math.abs(raisedNWPos.y - raisedSEPos.y) / 2, HULL_MIN.y), 0),
+        max = Vector3(math.min(math.abs(raisedNWPos.x - raisedSEPos.x) / 2, HULL_MAX.x), math.min(math.abs(raisedNWPos.y - raisedSEPos.y) / 2, HULL_MAX.y), 45)
     }
-    local hitPosition, groundNormal = traceHullDown(middle, traceHullSize)
 
-    -- Calculate the remaining corners based on the ground normal
-    local remainingCorners = calculateRemainingCorners(nwPos, sePos, groundNormal)
+    local groundNormal = traceHullDown(middlePos, traceHullSize)
 
-    -- Adjust corners to align with the ground normal if necessary
-    nwPos = traceLineDown(nwPos, 144)
-    sePos = traceLineDown(sePos, 144)
-    remainingCorners[1] = traceLineDown(remainingCorners[1], 144)
-    remainingCorners[2] = traceLineDown(remainingCorners[2], 144)
+    -- Step 4: Calculate the remaining corners based on the ground normal
+    local height = math.abs(node.nw.y - node.se.y)
+    local remainingCorners = calculateRemainingCorners(raisedNWPos, raisedSEPos, groundNormal, height)
 
-    -- Update node with new corners and position
-    node.nw = nwPos
-    node.se = sePos
+    -- Step 5: Adjust corners to align with the ground normal
+    raisedNWPos = traceLineDown(raisedNWPos)
+    raisedSEPos = traceLineDown(raisedSEPos)
+    remainingCorners[1] = traceLineDown(remainingCorners[1])
+    remainingCorners[2] = traceLineDown(remainingCorners[2])
+
+    -- Step 6: Update node with new corners and position
+    node.nw = raisedNWPos
+    node.se = raisedSEPos
     node.ne = remainingCorners[1]
     node.sw = remainingCorners[2]
 
-    -- Recalculate the middle position based on the fixed corners
-    local finalMiddle = {
-        x = (nwPos.x + sePos.x) / 2,
-        y = (nwPos.y + sePos.y) / 2,
-        z = (nwPos.z + sePos.z) / 2
-    }
-    node.pos = finalMiddle
+    -- Step 7: Recalculate the middle position based on the fixed corners
+    local finalMiddlePos = (raisedNWPos + raisedSEPos) / 2
+    node.pos = finalMiddlePos
 
-    node.fixed = true
-    return node
+    G.Navigation.nodes[nodeId] = node -- Set the fixed node to the global node
 end
 
 -- Adjust all nodes by fixing their positions and adding missing corners.
@@ -268,7 +225,7 @@ end
 
 -- Set the raw nodes and copy them to the fixed nodes table
 ---@param nodes Node[]
-function Navigation.SetRawNodes(nodes)
+function Navigation.SetNodes(nodes)
     G.Navigation.rawNodes = nodes
     G.Navigation.nodes = Lib.Utils.DeepCopy(nodes)
 end
@@ -329,10 +286,34 @@ function Navigation.ResetTickTimer()
     G.Navigation.currentNodeTicks = 0
 end
 
+-- Function to convert degrees to radians
+local function degreesToRadians(degrees)
+    return degrees * math.pi / 180
+end
+
+-- Function to get the ground normal at a given position
+local function getGroundNormal(position)
+    local groundTraceStart = position + Vector3(0, 0, 5)
+    local groundTraceEnd = position + Vector3(0, 0, -67)
+    local groundTraceResult = engine.TraceLine(groundTraceStart, groundTraceEnd, MASK_PLAYERSOLID_BRUSHONLY)
+    return groundTraceResult.plane
+end
+
+-- Function to adjust direction based on ground normal
+local function adjustDirectionToGround(direction, groundNormal)
+    local upVector = Vector3(0, 0, 1)
+    local angleBetween = math.acos(groundNormal:Dot(upVector))
+    if angleBetween <= degreesToRadians(MAX_SLOPE_ANGLE) then
+        local newDirection = direction:Cross(upVector):Cross(groundNormal)
+        return newDirection:Normalized()
+    end
+    return direction -- If the slope is too steep, keep the original direction
+end
+
 -- Checks for an obstruction between two points using a hull trace.
 local function isPathClear(startPos, endPos)
     local traceResult = engine.TraceHull(startPos, endPos, HULL_MIN, HULL_MAX, MASK_PLAYERSOLID_BRUSHONLY)
-    return traceResult.fraction == 1
+    return traceResult
 end
 
 -- Checks if the ground is stable at a given position.
@@ -343,25 +324,43 @@ local function isGroundStable(position)
     return groundTraceResult.fraction < 1
 end
 
--- Simulates a fast walk between two points, checking for collisions and step handling.
-local function simulateFastWalk(startPos, endPos)
-    local currentPosition = startPos
+-- Main function to check if the path between the current position and the node is walkable.
+function Navigation.isWalkable(startPos, endPos)
     local direction = (endPos - startPos):Normalized()
     local totalDistance = (endPos - startPos):Length()
-    local stepSize = totalDistance / MAX_SIMULATION_TICKS
-    local currentDistance = 0
+    local stepSize = math.max(MIN_STEP_SIZE, totalDistance / preferredSteps)
+    local currentPosition = startPos
+    local distanceCovered = 0
 
-    while currentDistance < totalDistance do
+    while distanceCovered < totalDistance do
+        stepSize = math.min(stepSize, totalDistance - distanceCovered)
         local nextPosition = currentPosition + direction * stepSize
 
         -- Check if the next step is clear
-        if not isPathClear(currentPosition, nextPosition) then
-            -- Try to step up
-            local stepUpPosition = nextPosition + Vector3(0, 0, STEP_HEIGHT)
-            if isPathClear(currentPosition, stepUpPosition) and isGroundStable(stepUpPosition) then
-                currentPosition = stepUpPosition
+        local pathClearResult = isPathClear(currentPosition, nextPosition)
+        if pathClearResult.fraction < 1 then
+            -- We'll collide, get end position of the trace
+            local collisionPosition = pathClearResult.endpos
+            local groundNormal = pathClearResult.plane
+            local angleBetween = math.deg(math.acos(groundNormal:Dot(Vector3(0, 0, 1))))
+
+            if angleBetween <= MAX_SLOPE_ANGLE then
+                -- Slope is climbable
+                currentPosition = collisionPosition
             else
-                return false, currentPosition -- Path is blocked
+                -- Slope is too steep, try to step up
+                local stepUpPosition = collisionPosition + Vector3(0, 0, STEP_HEIGHT)
+                if isPathClear(currentPosition, stepUpPosition).fraction == 1 and isGroundStable(stepUpPosition) then
+                    currentPosition = stepUpPosition
+                else
+                    -- Try to jump
+                    local jumpPosition = currentPosition + Vector3(0, 0, JUMP_HEIGHT) + direction * 1
+                    if isPathClear(currentPosition, jumpPosition).fraction == 1 and isGroundStable(jumpPosition) then
+                        currentPosition = jumpPosition
+                    else
+                        return false -- Path is blocked
+                    end
+                end
             end
         else
             currentPosition = nextPosition
@@ -369,128 +368,70 @@ local function simulateFastWalk(startPos, endPos)
 
         -- Check if the ground is stable
         if not isGroundStable(currentPosition) then
-            return false, currentPosition -- Unstable ground detected
+            -- Simulate falling
+            local fallDistance = (stepSize / 450) * GRAVITY
+            currentPosition = currentPosition - Vector3(0, 0, fallDistance)
+        else
+            -- Adjust direction to align with the ground
+            local groundNormal = getGroundNormal(currentPosition)
+            direction = adjustDirectionToGround(direction, groundNormal)
         end
 
-        currentDistance = (currentPosition - startPos):Length()
+        distanceCovered = distanceCovered + stepSize
     end
 
-    return true, currentPosition -- Path is walkable
+    return true -- Path is walkable
 end
 
--- Main function to check if the path between the current position and the node is walkable.
-function Navigation.isWalkable(startPos, endPos)
-    -- Simulate the walk between start and end positions
-    local walkable, finalPosition = simulateFastWalk(startPos, endPos)
-    return walkable, finalPosition
-end
 
---[[Checks for an obstruction between two points using a line trace, then a hull trace if necessary.
-local function isPathClear(startPos, endPos)
-    local lineTraceResult = engine.TraceLine(startPos, endPos, TRACE_MASK)
-    if lineTraceResult.fraction < 1 then
-        return false
-    end
+function Navigation.OptimizePath()
+    local path = G.Navigation.path
+    if not path then return end
 
-    local traceResult = engine.TraceHull(startPos, endPos, HULL_MIN, HULL_MAX, TRACE_MASK)
-    if traceResult.fraction == 1 then
-        return true
-    else
-        local upVector = Vector3(0, 0, 72)
-        traceResult = engine.TraceHull(startPos + upVector, endPos, HULL_MIN, HULL_MAX, TRACE_MASK)
-        return traceResult.fraction == 1
-    end
-end
+    local currentIndex = G.Navigation.FirstAgentNode
+    local checkingIndex = G.Navigation.SecondAgentNode
+    local currentNode = G.Navigation.currentNode -- Assuming this is correctly set somewhere in your game logic
+    local optimizationLimit = G.Menu.Main.OptimizationLimit or 10 -- Default limit if not specified
 
--- Checks if the ground is stable at a given position.
-local function isGroundStable(position)
-    local groundTraceStart = position + Vector3(0, 0, 5)
-    local groundTraceEnd = position + Vector3(0, 0, -67)
-    local groundTraceResult = engine.TraceLine(groundTraceStart, groundTraceEnd, TRACE_MASK)
-    return groundTraceResult.fraction < 1
-end
-
--- Checks if the path segments are safe from falling off a cliff using iterative binary search.
-local function isPathSafeFromCliff(startPos, endPos, maxDepth)
-    local positionsToCheck = {startPos, endPos}
-    for depth = 1, maxDepth do
-        local newPositions = {}
-        for i = 1, #positionsToCheck - 1 do
-            local pos1 = positionsToCheck[i]
-            local pos2 = positionsToCheck[i + 1]
-            local midPos = (pos1 + pos2) / 2
-
-            -- Check if the ground is stable at the midpoint
-            if not isGroundStable(midPos) then
-                return false
+    -- Only proceed if the first agent is not too far ahead of the current node
+    if currentIndex - currentNode <= optimizationLimit then
+        -- Check visibility between the current node and the checking node
+        if checkingIndex <= #path and G.Navigation.isWalkable(path[currentIndex], path[checkingIndex]) then
+            -- If the current node can directly walk to the checking node, move to check the next node
+            checkingIndex = checkingIndex + 1
+        else
+            -- Once we find a node that cannot be directly walked to, we place all nodes in a straight line
+            -- from currentIndex to the last directly walkable node (checkingIndex - 1)
+            if checkingIndex > currentIndex + 1 then
+                local startX, startY = path[currentIndex].pos.x, path[currentIndex].pos.y
+                local endX, endY = path[checkingIndex - 1].pos.x, path[checkingIndex - 1].pos.y
+                local numSteps = checkingIndex - currentIndex - 1
+                local stepX = (endX - startX) / (numSteps + 1)
+                local stepY = (endY - startY) / (numSteps + 1)
+                for i = 1, numSteps do
+                    local nodeIndex = currentIndex + i
+                    local node = path[nodeIndex]
+                    node.pos.x = startX + stepX * i
+                    node.pos.y = startY + stepY * i
+                    -- Reset fixed status before applying new fix
+                    node.fixed = nil
+                    -- Call FixNode to adjust node's height and validate it
+                    Navigation.FixNode(nodeIndex)
+                end
             end
 
-            -- Add new positions to check in the next iteration
-            table.insert(newPositions, pos1)
-            table.insert(newPositions, midPos)
-        end
-        table.insert(newPositions, endPos)
-        positionsToCheck = newPositions
-    end
+            -- Update the indices in the G module to start a new segment of optimization
+            G.Navigation.FirstAgentNode = checkingIndex - 1
+            G.Navigation.SecondAgentNode = G.Navigation.FirstAgentNode + 1
 
-    return true
+            -- Reset the indices to the beginning if we've reached or exceeded the last node
+            if G.Navigation.FirstAgentNode >= #path - 1 then
+                G.Navigation.FirstAgentNode = 1
+                G.Navigation.SecondAgentNode = G.Navigation.FirstAgentNode + 1
+            end
+        end
+    end
 end
-
--- Main function to check if the path between the current position and the node is walkable.
-function Navigation.isWalkable(startPos, endPos, maxDepth)
-    -- Check if the ground is stable at start, mid, and end positions
-    local midPos = (startPos + endPos) / 2
-    if not isGroundStable(startPos) or not isGroundStable(midPos) or not isGroundStable(endPos) then
-        return false
-    end
-
-    -- Check if the path between start and end is clear
-    if not isPathClear(startPos, endPos) then
-        return false
-    end
-
-    -- Ensure the path segments are safe from falling off a cliff
-    if not isPathSafeFromCliff(startPos, endPos, maxDepth) then
-        return false
-    end
-
-    return true
-end]]
-
-
---[[--- Finds the closest walkable node from the player's current position in reverse order (from last to first).
--- @param currentPath table The current path consisting of nodes.
--- @param myPos Vector3 The player's current position.
--- @param currentNodeIndex number The index of the current node in the path.
--- @return number, Node, Vector3 The index, node, and position of the closest walkable node in reverse order.
-function Navigation.FindBestNode(currentPath, myPos, currentNodeIndex)
-    local lastWalkableNodeIndex = nil
-    local lastWalkableNode = nil
-    local lastWalkableNodePos = nil
-
-    for i = currentNodeIndex, 1, -1 do
-        local node = currentPath[i]
-        node = Navigation.FixNode(node.id)
-        local nodePos = node.pos
-        local distance = (myPos - nodePos):Length()
-
-        if distance <= 700 and Navigation.isWalkable(myPos, nodePos) then
-            lastWalkableNodeIndex = i
-            lastWalkableNode = node
-            lastWalkableNodePos = nodePos
-        elseif distance > 700 then
-            break
-        end
-    end
-
-    return lastWalkableNodeIndex, lastWalkableNode, lastWalkableNodePos
-end]]
-
--- Constants for hull dimensions and trace masks
-local TRACE_MASK = MASK_PLAYERSOLID
-
--- Constants
-local TICK_RATE = 66
 
 local ClassForwardSpeeds = {
     [E_Character.TF2_Scout] = 400,
@@ -520,7 +461,7 @@ local function ComputeMove(pCmd, a, b)
     local vSilent = Vector3(x, y, 0)
 
     local ang = vSilent:Angles()
-    local cPitch, cYaw, cRoll = pCmd:GetViewAngles()
+    local cYaw = pCmd:GetViewAngles().yaw
     local yaw = math.rad(ang.y - cYaw)
     local move = Vector3(math.cos(yaw), -math.sin(yaw), 0)
 
@@ -533,9 +474,6 @@ function Navigation.WalkTo(pCmd, pLocal, pDestination)
     local distVector = pDestination - localPos
     local dist = distVector:Length()
     local currentSpeed = Navigation.GetForwardSpeedByClass(pLocal)
-    local currentVelocity = pLocal:EstimateAbsVelocity()
-    local velocityDirection = Common.Normalize(currentVelocity)
-    local velocitySpeed = currentVelocity:Length()
 
     local distancePerTick = math.max(10, math.min(currentSpeed / TICK_RATE, 450))
 
@@ -599,11 +537,15 @@ local function processNavData(navData)
         local cZ = (area.north_west.z + area.south_east.z) / 2
 
         navNodes[area.id] = {
+            --data
             pos = Vector3(cX, cY, cZ),
             id = area.id,
             c = area.connections,
+            --corners
             nw = area.north_west,
             se = area.south_east,
+            ne = Vector3(0,0,0),
+            sw = Vector3(0,0,0),
         }
     end
     return navNodes
@@ -628,56 +570,9 @@ function Navigation.LoadFile(navFile)
     end
 
     local navNodes = processNavData(navData)
-    Navigation.FixAllNodes()
-    Navigation.SetRawNodes(navNodes)
+    Navigation.SetNodes(navNodes) --alocate all ndoes to raw nodes cache and dynamic nodes.
+    Navigation.FixAllNodes() --fix the dynamic
     Log:Info("Parsed %d areas from nav file.", #navNodes)
-end
-
-function Navigation.OptimizePath()
-    local path = G.Navigation.path
-    local currentIndex = G.Navigation.FirstAgentNode
-    local checkingIndex = G.Navigation.SecondAgentNode
-    local currentNode = G.Navigation.currentNodeID -- Assuming this is correctly set somewhere in your game logic
-    local optimizationLimit = G.Menu.Main.OptimizationLimit or 10 -- Default limit if not specified
-
-    -- Only proceed if the first agent is not too far ahead of the current node
-    if currentIndex - currentNode <= optimizationLimit then
-        -- Check visibility between the current node and the checking node
-        if checkingIndex <= #path and G.Navigation.isWalkable(path[currentIndex], path[checkingIndex]) then
-            -- If the current node can directly walk to the checking node, move to check the next node
-            checkingIndex = checkingIndex + 1
-        else
-            -- Once we find a node that cannot be directly walked to, we place all nodes in a straight line
-            -- from currentIndex to the last directly walkable node (checkingIndex - 1)
-            if checkingIndex > currentIndex + 1 then
-                local startX, startY = path[currentIndex].pos.x, path[currentIndex].pos.y
-                local endX, endY = path[checkingIndex - 1].pos.x, path[checkingIndex - 1].pos.y
-                local numSteps = checkingIndex - currentIndex - 1
-                local stepX = (endX - startX) / (numSteps + 1)
-                local stepY = (endY - startY) / (numSteps + 1)
-                for i = 1, numSteps do
-                    local nodeIndex = currentIndex + i
-                    local node = path[nodeIndex]
-                    node.pos.x = startX + stepX * i
-                    node.pos.y = startY + stepY * i
-                    -- Reset fixed status before applying new fix
-                    node.fixed = nil
-                    -- Call FixNode to adjust node's height and validate it
-                    Navigation.FixNode(nodeIndex)
-                end
-            end
-
-            -- Update the indices in the G module to start a new segment of optimization
-            G.Navigation.FirstAgentNode = checkingIndex - 1
-            G.Navigation.SecondAgentNode = G.Navigation.FirstAgentNode + 1
-
-            -- Reset the indices to the beginning if we've reached or exceeded the last node
-            if G.Navigation.FirstAgentNode >= #path - 1 then
-                G.Navigation.FirstAgentNode = 1
-                G.Navigation.SecondAgentNode = G.Navigation.FirstAgentNode + 1
-            end
-        end
-    end
 end
 
 ---@param pos Vector3|{ x:number, y:number, z:number }
@@ -761,12 +656,12 @@ function Navigation.FindPath(startNode, goalNode, maxNodes)
     local horizontalDistance = math.abs(goalNode.pos.x - startNode.pos.x) + math.abs(goalNode.pos.y - startNode.pos.y)
     local verticalDistance = math.abs(goalNode.pos.z - startNode.pos.z)
 
-    if (horizontalDistance <= 100 and verticalDistance <= 18) then
+    if (horizontalDistance <= 100 and verticalDistance <= 18) then --attempt to avoid work
         G.Navigation.path = {goalNode}
-    elseif (horizontalDistance <= 700 and verticalDistance <= 18) or Navigation.isWalkable(startNode, goalNode) then
-        G.Navigation.path = Pathfinding.GreedyBestFirstSearch(startNode, goalNode, G.Navigation.nodes, GetAdjacentNodes)
-    else
-        G.Navigation.path = Pathfinding.AStarPath(startNode, goalNode, G.Navigation.nodes, GetAdjacentNodes)
+    elseif (horizontalDistance <= 700 and verticalDistance <= 18) or Navigation.isWalkable(startNode, goalNode) then --didnt work try doing less work
+        G.Navigation.path = AStar.QuickPath(startNode, goalNode, G.Navigation.nodes, GetAdjacentNodes)
+    else --damn it then do it propertly at least
+        G.Navigation.path = AStar.Path(startNode, goalNode, G.Navigation.nodes, GetAdjacentNodes)
     end
 
     if not G.Navigation.path or #G.Navigation.path == 0 then

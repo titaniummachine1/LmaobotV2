@@ -97,6 +97,10 @@ G.Navigation = {
     SecondAgentNode = 2,
 }
 
+function G.ReloadNodes()
+    G.Navigation.nodes = G.Navigation.rawNodes
+end
+
 G.Tasks = table.readOnly {
     None = 0,
     Objective = 1,
