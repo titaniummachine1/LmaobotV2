@@ -11,6 +11,7 @@ local Lib, Log = Common.Lib, Common.Log
 
 -- Constants
 local STEP_HEIGHT = 18
+local UP_VECTOR = Vector3(0, 0, 1)
 local DROP_HEIGHT = 144  -- Define your constants outside the function
 local Jump_Height = 72 --duck jump height
 local MAX_SLOPE_ANGLE = 55 -- Maximum angle (in degrees) that is climbable
@@ -21,6 +22,9 @@ local HULL_MIN = G.pLocal.vHitbox.Min
 local HULL_MAX = G.pLocal.vHitbox.Max
 local TRACE_MASK = MASK_PLAYERSOLID
 local TICK_RATE = 66
+
+local GROUND_TRACE_OFFSET_START = Vector3(0, 0, 5)
+local GROUND_TRACE_OFFSET_END = Vector3(0, 0, -67)
 
 -- Add a connection between two nodes
 function Navigation.AddConnection(nodeA, nodeB)
@@ -291,25 +295,6 @@ local function degreesToRadians(degrees)
     return degrees * math.pi / 180
 end
 
--- Function to get the ground normal at a given position
-local function getGroundNormal(position)
-    local groundTraceStart = position + Vector3(0, 0, 5)
-    local groundTraceEnd = position + Vector3(0, 0, -67)
-    local groundTraceResult = engine.TraceLine(groundTraceStart, groundTraceEnd, MASK_PLAYERSOLID_BRUSHONLY)
-    return groundTraceResult.plane
-end
-
--- Function to adjust direction based on ground normal
-local function adjustDirectionToGround(direction, groundNormal)
-    local upVector = Vector3(0, 0, 1)
-    local angleBetween = math.acos(groundNormal:Dot(upVector))
-    if angleBetween <= degreesToRadians(MAX_SLOPE_ANGLE) then
-        local newDirection = direction:Cross(upVector):Cross(groundNormal)
-        return newDirection:Normalized()
-    end
-    return direction -- If the slope is too steep, keep the original direction
-end
-
 -- Checks for an obstruction between two points using a hull trace.
 local function isPathClear(startPos, endPos)
     local traceResult = engine.TraceHull(startPos, endPos, HULL_MIN, HULL_MAX, MASK_PLAYERSOLID_BRUSHONLY)
@@ -318,11 +303,29 @@ end
 
 -- Checks if the ground is stable at a given position.
 local function isGroundStable(position)
-    local groundTraceStart = position + Vector3(0, 0, 5)
-    local groundTraceEnd = position + Vector3(0, 0, -67)
-    local groundTraceResult = engine.TraceLine(groundTraceStart, groundTraceEnd, MASK_PLAYERSOLID_BRUSHONLY)
+    local groundTraceResult = engine.TraceLine(position + GROUND_TRACE_OFFSET_START, position + GROUND_TRACE_OFFSET_END, MASK_PLAYERSOLID_BRUSHONLY)
     return groundTraceResult.fraction < 1
 end
+
+-- Function to get the ground normal at a given position
+local function getGroundNormal(position)
+    local groundTraceResult = engine.TraceLine(position + GROUND_TRACE_OFFSET_START, position + GROUND_TRACE_OFFSET_END, MASK_PLAYERSOLID_BRUSHONLY)
+    return groundTraceResult.plane
+end
+
+-- Precomputed up vector and max slope angle in radians
+local MAX_SLOPE_ANGLE_RAD = degreesToRadians(MAX_SLOPE_ANGLE)
+
+-- Function to adjust direction based on ground normal
+local function adjustDirectionToGround(direction, groundNormal)
+    local angleBetween = math.acos(groundNormal:Dot(UP_VECTOR))
+    if angleBetween <= MAX_SLOPE_ANGLE_RAD then
+        local newDirection = direction:Cross(UP_VECTOR):Cross(groundNormal)
+        return newDirection:Normalized()
+    end
+    return direction -- If the slope is too steep, keep the original direction
+end
+
 
 -- Main function to check if the path between the current position and the node is walkable.
 function Navigation.isWalkable(startPos, endPos)
@@ -331,6 +334,7 @@ function Navigation.isWalkable(startPos, endPos)
     local stepSize = math.max(MIN_STEP_SIZE, totalDistance / preferredSteps)
     local currentPosition = startPos
     local distanceCovered = 0
+    local requiredFraction = STEP_HEIGHT / Jump_Height
 
     while distanceCovered < totalDistance do
         stepSize = math.min(stepSize, totalDistance - distanceCovered)
@@ -341,26 +345,22 @@ function Navigation.isWalkable(startPos, endPos)
         if pathClearResult.fraction < 1 then
             -- We'll collide, get end position of the trace
             local collisionPosition = pathClearResult.endpos
-            local groundNormal = pathClearResult.plane
-            local angleBetween = math.deg(math.acos(groundNormal:Dot(Vector3(0, 0, 1))))
 
-            if angleBetween <= MAX_SLOPE_ANGLE then
-                -- Slope is climbable
-                currentPosition = collisionPosition
-            else
-                -- Slope is too steep, try to step up
-                local stepUpPosition = collisionPosition + Vector3(0, 0, STEP_HEIGHT)
-                if isPathClear(currentPosition, stepUpPosition).fraction == 1 and isGroundStable(stepUpPosition) then
-                    currentPosition = stepUpPosition
-                else
-                    -- Try to jump
-                    local jumpPosition = currentPosition + Vector3(0, 0, JUMP_HEIGHT) + direction * 1
-                    if isPathClear(currentPosition, jumpPosition).fraction == 1 and isGroundStable(jumpPosition) then
-                        currentPosition = jumpPosition
-                    else
-                        return false -- Path is blocked
-                    end
-                end
+            -- Move 1 unit forward, then up by the jump height, then trace down
+            local forwardPosition = collisionPosition + direction * 1
+            local upPosition = forwardPosition + Vector3(0, 0, Jump_Height)
+            local traceDownResult = isPathClear(upPosition, forwardPosition)
+
+            -- Determine if we can step up or jump over the obstacle
+            local canStepUp = traceDownResult.fraction >= requiredFraction
+            local canJumpOver = traceDownResult.fraction > 0 and G.Menu.Movement.Smart_Jump
+
+            -- Update the current position based on step up or jump over
+            currentPosition = (canStepUp or canJumpOver) and traceDownResult.endpos or currentPosition
+
+            -- If we couldn't step up or jump over, the path is blocked
+            if traceDownResult.fraction == 0 or currentPosition == collisionPosition then
+                return false
             end
         else
             currentPosition = nextPosition
@@ -369,12 +369,10 @@ function Navigation.isWalkable(startPos, endPos)
         -- Check if the ground is stable
         if not isGroundStable(currentPosition) then
             -- Simulate falling
-            local fallDistance = (stepSize / 450) * GRAVITY
-            currentPosition = currentPosition - Vector3(0, 0, fallDistance)
+            currentPosition = currentPosition - Vector3(0, 0, (stepSize / 450) * GRAVITY)
         else
             -- Adjust direction to align with the ground
-            local groundNormal = getGroundNormal(currentPosition)
-            direction = adjustDirectionToGround(direction, groundNormal)
+            direction = adjustDirectionToGround(direction, getGroundNormal(currentPosition))
         end
 
         distanceCovered = distanceCovered + stepSize
@@ -433,27 +431,14 @@ function Navigation.OptimizePath()
     end
 end
 
-local ClassForwardSpeeds = {
-    [E_Character.TF2_Scout] = 400,
-    [E_Character.TF2_Soldier] = 240,
-    [E_Character.TF2_Pyro] = 300,
-    [E_Character.TF2_Demoman] = 280,
-    [E_Character.TF2_Heavy] = 230,
-    [E_Character.TF2_Engineer] = 300,
-    [E_Character.TF2_Medic] = 320,
-    [E_Character.TF2_Sniper] = 300,
-    [E_Character.TF2_Spy] = 320
-}
-
 -- Function to get forward speed by class
-function Navigation.GetForwardSpeedByClass(pLocal)
-    local pLocalClass = pLocal:GetPropInt("m_iClass")
-    return ClassForwardSpeeds[pLocalClass]
+function Navigation.GetMaxSpeed(entity)
+    return entity:GetPropFloat("m_flMaxspeed")
 end
 
 -- Function to compute the move direction
 local function ComputeMove(pCmd, a, b)
-    local diff = (b - a)
+    local diff = b - a
     if diff:Length() == 0 then return Vector3(0, 0, 0) end
 
     local x = diff.x
@@ -465,27 +450,57 @@ local function ComputeMove(pCmd, a, b)
     local yaw = math.rad(ang.y - cYaw)
     local move = Vector3(math.cos(yaw), -math.sin(yaw), 0)
 
-    return move
+    local maxSpeed = Navigation.GetMaxSpeed(G.pLocal.entity) + 1
+    return move * maxSpeed
 end
 
--- Function to make the player walk to a destination smoothly
+-- Function to implement fast stop
+local function FastStop(pCmd, pLocal)
+    local velocity = pLocal:GetVelocity()
+    velocity.z = 0
+    local speed = velocity:Length2D()
+
+    if speed < 1 then
+        pCmd:SetForwardMove(0)
+        pCmd:SetSideMove(0)
+        return
+    end
+
+    local accel = 5.5
+    local maxSpeed = Navigation.GetMaxSpeed(G.pLocal.entity)
+    local playerSurfaceFriction = 1.0
+    local max_accelspeed = accel * (1 / TICK_RATE) * maxSpeed * playerSurfaceFriction
+
+    local wishspeed
+    if speed - max_accelspeed <= -1 then
+        wishspeed = max_accelspeed / (speed / (accel * (1 / TICK_RATE)))
+    else
+        wishspeed = max_accelspeed
+    end
+
+    local ndir = (velocity * -1):Angles()
+    ndir.y = pCmd:GetViewAngles().y - ndir.y
+    ndir = ndir:ToVector()
+
+    pCmd:SetForwardMove(ndir.x * wishspeed)
+    pCmd:SetSideMove(ndir.y * wishspeed)
+end
+
+-- Function to make the player walk to a destination smoothly and stop at the destination
 function Navigation.WalkTo(pCmd, pLocal, pDestination)
     local localPos = pLocal:GetAbsOrigin()
     local distVector = pDestination - localPos
     local dist = distVector:Length()
-    local currentSpeed = Navigation.GetForwardSpeedByClass(pLocal)
+    local currentSpeed = Navigation.GetMaxSpeed(pLocal)
 
-    local distancePerTick = math.max(10, math.min(currentSpeed / TICK_RATE, 450))
+    local distancePerTick = math.max(10, math.min(currentSpeed / TICK_RATE, 450)) --in case we tracvel faster then we are close to target
 
-    if dist > distancePerTick then
+    if dist > distancePerTick then --if we are further away we walk normaly at max speed
         local result = ComputeMove(pCmd, localPos, pDestination)
         pCmd:SetForwardMove(result.x)
         pCmd:SetSideMove(result.y)
     else
-        local result = ComputeMove(pCmd, localPos, pDestination)
-        local scaleFactor = dist / 1000
-        pCmd:SetForwardMove(result.x * scaleFactor)
-        pCmd:SetSideMove(result.y * scaleFactor)
+        FastStop(pCmd, pLocal)
     end
 end
 
@@ -573,6 +588,14 @@ function Navigation.LoadFile(navFile)
     Navigation.SetNodes(navNodes) --alocate all ndoes to raw nodes cache and dynamic nodes.
     Navigation.FixAllNodes() --fix the dynamic
     Log:Info("Parsed %d areas from nav file.", #navNodes)
+end
+
+-- Loads the nav file of the current map
+function Navigation.LoadNavFile()
+    local mapFile = engine.GetMapName()
+    local navFile = string.gsub(mapFile, ".bsp", ".nav")
+    Navigation.LoadFile(navFile)
+    Navigation.ClearPath()
 end
 
 ---@param pos Vector3|{ x:number, y:number, z:number }

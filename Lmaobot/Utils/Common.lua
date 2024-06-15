@@ -20,6 +20,7 @@ Common.Notify = Lib.UI.Notify
 Common.Log = Common.Utils.Logger.new("Navbot")
 Common.Json = require("Lmaobot.Utils.Json")-- Require Json.lua directly
 
+local Navigation = require("Lmaobot.Utils.Navigation")
 local G = require("Lmaobot.Utils.Globals")
 
 function Common.Normalize(vec)
@@ -32,11 +33,10 @@ function Common.horizontal_manhattan_distance(pos1, pos2)
     return math.abs(pos1.x - pos2.x) + math.abs(pos1.y - pos2.y)
 end
 
-function Common.LoadNavFile() -- Loads the nav file of the current map
-    local mapFile = engine.GetMapName()
-    local navFile = string.gsub(mapFile, ".bsp", ".nav")
-
-    Navigation.LoadFile(navFile)
+function Common.Setup()
+    G:Reset()
+    Navigation.LoadNavFile()
+    Navigation.FixAllNodes()
 end
 
 --- Adds a task to the current tasks table

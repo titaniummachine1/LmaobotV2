@@ -53,9 +53,10 @@ G.Default = {
     index = 1,
     team = 1,
     Class = 1,
-    AbsOrigin = Vector3{0, 0, 0},
+    flags = 1,
     OnGround = true,
-    ViewAngles = EulerAngles{0, 0, 0},
+    Origin = Vector3{0, 0, 0},
+    ViewAngles = EulerAngles{90, 0, 0},
     Viewheight = Vector3{0, 0, 75},
     VisPos = Vector3{0, 0, 75},
     vHitbox = {Min = Vector3(-24, -24, 0), Max = Vector3(24, 24, 82)}
@@ -79,8 +80,7 @@ G.Gui = {
 }
 
 G.Misc = {
-    jumptimer = 0,
-    NodeTouchDistance = 7,
+    NodeTouchDistance = 10,
     NodeTouchHeight = 82,
     workLimit = 1,
 }
@@ -104,8 +104,8 @@ end
 G.Tasks = table.readOnly {
     None = 0,
     Objective = 1,
-    Health = 2,
-    Follow = 3,
+    Follow = 2,
+    Health = 3,
     Medic = 4,
     Goto = 5,
 }
@@ -117,8 +117,17 @@ G.Benchmark = {
     MemUsage = 0
 }
 
+G.States = {}
+
+G.StateDefinition = {}
+
+-- Function to save the default state of globals
+function G.saveGlobalState()
+    G_initial = deepCopy(_G)
+end
+
 -- Store initial state
-local G_initial = deepCopy(G)
+G.saveGlobalState()
 
 -- Function to reset G to initial state
 function G:Reset()
